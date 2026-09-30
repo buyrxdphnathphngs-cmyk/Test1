@@ -1,0 +1,542 @@
+-- Bemo Hub (Blue Theme) - Full Touch Screen Vehicle Controller, Auto Block, Auto Attack & Auto Q/E Workout
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+
+local Window = Fluent:CreateWindow({
+    Title = "Bemo Menu",
+    SubTitle = "by Delta Exec",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(560, 460),
+    Acrylic = false,
+    Theme = "DarkBlue",
+    MinimizeKey = Enum.KeyCode.RightControl
+})
+
+local Tabs = {
+    Main = Window:AddTab({ Title = "ฟังก์ชันหลัก", Icon = "home" }),
+    Combat = Window:AddTab({ Title = "ระบบต่อสู้", Icon = "shield" }),
+    Vehicle = Window:AddTab({ Title = "ปรับแต่งรถ", Icon = "car" }),
+    Teleport = Window:AddTab({ Title = "วาปหาคน", Icon = "user" })
+}
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+
+---------------------------------------------------------
+-- 1. โหมดบิน + ปรับความเร็วบิน (Fly Mode & Speed)
+---------------------------------------------------------
+local flying = false
+local flySpeed = 50
+local flyBV, flyBG
+
+Tabs.Main:AddToggle("FlyToggle", {
+    Title = "1. โหมดบิน (Fly)",
+    Default = false,
+    Callback = function(Value)
+        flying = Value
+        local char = LocalPlayer.Character
+        if not char then return end
+        local root = char:FindFirstChild("HumanoidRootPart")
+        
+        if flying and root then
+            flyBV = Instance.new("BodyVelocity")
+            flyBG = Instance.new("BodyGyro")
+            
+            flyBV.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+            flyBV.Velocity = Vector3.zero
+            flyBV.Parent = root
+            
+            flyBG.MaxTorque = Vector3.new(1e6, 1e6, 1e6)
+            flyBG.CFrame = root.CFrame
+            flyBG.Parent = root
+            
+            task.spawn(function()
+                while flying and task.wait() do
+                    local cam = workspace.CurrentCamera
+                    local moveDir = Vector3.zero
+                    
+                    if UserInputService:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+                    if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+                    
+                    flyBV.Velocity = moveDir * flySpeed
+                    flyBG.CFrame = cam.CFrame
+                end
+            end)
+        else
+            if flyBV then flyBV:Destroy() end
+            if flyBG then flyBG:Destroy() end
+        end
+    end
+})
+
+local FlySpeedInput = Tabs.Main:AddInput("FlySpeedInput", {
+    Title = "ความเร็วการบิน (พิมพ์ตัวเลข)",
+    Default = "50",
+    Placeholder = "เช่น 50, 100, 200",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num then
+            flySpeed = num
+            Fluent:Notify({ Title = "Bemo Menu", Content = "ปรับความเร็วบินเป็น: " .. tostring(flySpeed), Duration = 2 })
+        end
+    end
+})
+
+Tabs.Main:AddButton({
+    Title = "เพิ่มความเร็วบิน (+10)",
+    Callback = function()
+        flySpeed = flySpeed + 10
+        FlySpeedInput:SetValue(tostring(flySpeed))
+    end
+})
+
+Tabs.Main:AddButton({
+    Title = "ลดความเร็วบิน (-10)",
+    Callback = function()
+        if flySpeed > 10 then flySpeed = flySpeed - 10 else flySpeed = 10 end
+        FlySpeedInput:SetValue(tostring(flySpeed))
+    end
+})
+
+---------------------------------------------------------
+-- 2. วิ่งเร็ว (Speed Boost)
+---------------------------------------------------------
+local speedEnabled = false
+local walkSpeedValue = 16
+
+Tabs.Main:AddToggle("SpeedToggle", {
+    Title = "2. เปิดใช้งานความเร็วการเดิน (WalkSpeed)",
+    Default = false,
+    Callback = function(Value)
+        speedEnabled = Value
+        if not speedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            LocalPlayer.Character.Humanoid.WalkSpeed = 16
+        end
+    end
+})
+
+local SpeedInput = Tabs.Main:AddInput("SpeedInput", {
+    Title = "ความเร็วการเดิน (พิมพ์ตัวเลข)",
+    Default = "16",
+    Placeholder = "เช่น 50, 100, 200",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num then
+            walkSpeedValue = num
+            Fluent:Notify({ Title = "Bemo Menu", Content = "ตั้งค่าความเร็วเดินเป็น: " .. tostring(walkSpeedValue), Duration = 2 })
+        end
+    end
+})
+
+RunService.Heartbeat:Connect(function()
+    if speedEnabled and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid.WalkSpeed = walkSpeedValue
+    end
+end)
+
+---------------------------------------------------------
+-- 3. กระโดดไม่จำกัด (Infinite Jump)
+---------------------------------------------------------
+local infJump = false
+Tabs.Main:AddToggle("InfJumpToggle", {
+    Title = "3. กระโดดไม่จำกัด (Inf Jump)",
+    Default = false,
+    Callback = function(Value)
+        infJump = Value
+    end
+})
+
+UserInputService.JumpRequest:Connect(function()
+    if infJump and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+        LocalPlayer.Character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+    end
+end)
+
+---------------------------------------------------------
+-- 4. กันกระเด็น & ไม่ล้ม (Anti-Knockback)
+---------------------------------------------------------
+local antiKnockback = false
+Tabs.Main:AddToggle("AntiKnockToggle", {
+    Title = "4. กันกระเด็น / ไม่ล้ม (Anti-Knockback)",
+    Default = false,
+    Callback = function(Value)
+        antiKnockback = Value
+    end
+})
+
+RunService.Heartbeat:Connect(function()
+    if antiKnockback and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        local root = LocalPlayer.Character.HumanoidRootPart
+        local hum = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        
+        root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+        root.AssemblyAngularVelocity = Vector3.zero
+        
+        if hum then
+            hum:SetStateEnabled(Enum.HumanoidStateType.FallingDown, false)
+            hum:SetStateEnabled(Enum.HumanoidStateType.Ragdoll, false)
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- 5. ทะลุกำแพง (Noclip)
+---------------------------------------------------------
+local noclip = false
+Tabs.Main:AddToggle("NoclipToggle", {
+    Title = "5. ทะลุกำแพง (Noclip)",
+    Default = false,
+    Callback = function(Value)
+        noclip = Value
+    end
+})
+
+RunService.Stepped:Connect(function()
+    if noclip and LocalPlayer.Character then
+        for _, part in pairs(LocalPlayer.Character:GetDescendants()) do
+            if part:IsA("BasePart") and part.CanCollide then
+                part.CanCollide = false
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- 6. หายตัว (Invisibility)
+---------------------------------------------------------
+local invisible = false
+Tabs.Main:AddToggle("InvisToggle", {
+    Title = "6. หายตัว (Invisible)",
+    Default = false,
+    Callback = function(Value)
+        invisible = Value
+        local char = LocalPlayer.Character
+        if not char then return end
+        
+        for _, part in pairs(char:GetDescendants()) do
+            if part:IsA("BasePart") or part:IsA("Decal") then
+                if part.Name ~= "HumanoidRootPart" then
+                    part.Transparency = invisible and 1 or 0
+                end
+            end
+        end
+    end
+})
+
+---------------------------------------------------------
+-- 7. HITBOX EXPANDER
+---------------------------------------------------------
+local hitboxEnabled = false
+local hitboxSize = 15
+
+Tabs.Main:AddToggle("HitboxToggle", {
+    Title = "7. ขยายขนาด Hitbox (Hitbox Expander)",
+    Default = false,
+    Callback = function(Value)
+        hitboxEnabled = Value
+    end
+})
+
+local HitboxInput = Tabs.Main:AddInput("HitboxSizeInput", {
+    Title = "ขนาด Hitbox (พิมพ์ใส่ตัวเลข)",
+    Default = "15",
+    Placeholder = "เช่น 20, 50, 100",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num then hitboxSize = num end
+    end
+})
+
+RunService.RenderStepped:Connect(function()
+    if hitboxEnabled then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local root = player.Character.HumanoidRootPart
+                root.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                root.Transparency = 0.6
+                root.Color = Color3.fromRGB(0, 170, 255)
+                root.Material = Enum.Material.ForceField
+                root.CanCollide = false
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- 8. ระบบต่อสู้ & ออกกำลังกายอัตโนมัติ (Auto Q/E Workout)
+---------------------------------------------------------
+local autoBlockEnabled = false
+local autoAttackEnabled = false
+local autoWorkoutEnabled = false
+local combatDistance = 8 
+local isBlocking = false
+local lastAttackTick = 0
+local attackCooldown = 0.2
+local workoutSpeed = 0.15 -- ความเร็วในการกดสลับ Q / E (วินาที)
+
+Tabs.Combat:AddToggle("AutoBlockToggle", {
+    Title = "1. เปิด/ปิด บล็อกอัตโนมัติ (Auto Block)",
+    Default = false,
+    Callback = function(Value)
+        autoBlockEnabled = Value
+        if not autoBlockEnabled and isBlocking then
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+            isBlocking = false
+        end
+    end
+})
+
+Tabs.Combat:AddToggle("AutoAttackToggle", {
+    Title = "2. เปิด/ปิด ต่อยสวนกลับอัตโนมัติ (Auto Attack)",
+    Default = false,
+    Callback = function(Value)
+        autoAttackEnabled = Value
+    end
+})
+
+Tabs.Combat:AddToggle("AutoWorkoutToggle", {
+    Title = "3. เปิด/ปิด ออกกำลังกาย Q/E อัตโนมัติ (Auto Workout)",
+    Default = false,
+    Callback = function(Value)
+        autoWorkoutEnabled = Value
+    end
+})
+
+local CombatDistInput = Tabs.Combat:AddInput("CombatDistInput", {
+    Title = "ระยะตรวจจับศัตรู (Studs)",
+    Default = "8",
+    Placeholder = "เช่น 8, 10, 12",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num then combatDistance = num end
+    end
+})
+
+RunService.Heartbeat:Connect(function()
+    local char = LocalPlayer.Character
+    local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+    local enemyNearby = false
+    
+    if myRoot then
+        for _, player in pairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                local enemyRoot = player.Character.HumanoidRootPart
+                local distance = (myRoot.Position - enemyRoot.Position).Magnitude
+                
+                if distance <= combatDistance then
+                    enemyNearby = true
+                    break
+                end
+            end
+        end
+    end
+    
+    -- ระบบ Auto Block
+    if autoBlockEnabled then
+        if enemyNearby then
+            if not isBlocking then
+                VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+                isBlocking = true
+            end
+        else
+            if isBlocking then
+                VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+                isBlocking = false
+            end
+        end
+    end
+    
+    -- ระบบ Auto Attack (ต่อยสวนกลับ)
+    if autoAttackEnabled and enemyNearby then
+        local currentTime = tick()
+        if currentTime - lastAttackTick >= attackCooldown then
+            lastAttackTick = currentTime
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            task.wait(0.05)
+            VirtualInputManager:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+        end
+    end
+end)
+
+-- ลูปแยกสำหรับระบบกดปุ่มออกกำลังกาย Q และ E สลับกันอัตโนมัติ
+task.spawn(function()
+    while true do
+        if autoWorkoutEnabled then
+            -- กดปุ่ม Q
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.Q, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.Q, false, game)
+            
+            task.wait(workoutSpeed)
+            
+            -- กดปุ่ม E
+            VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+            task.wait(0.05)
+            VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+            
+            task.wait(workoutSpeed)
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- 9. ระบบตรวจจับการแตะหน้าจอมือถือ (เดินหน้า / ถอยหลัง / เบรก)
+---------------------------------------------------------
+local vehicleSpeedEnabled = false
+local vehicleSpeedValue = 200
+
+Tabs.Vehicle:AddToggle("VehicleToggle", {
+    Title = "เปิดใช้งานเร่งความเร็วรถ (Vehicle Speed)",
+    Default = false,
+    Callback = function(Value)
+        vehicleSpeedEnabled = Value
+    end
+})
+
+local VehicleInput = Tabs.Vehicle:AddInput("VehicleSpeedInput", {
+    Title = "ความเร็วรถ (ปรับได้ถึง 100,000)",
+    Default = "200",
+    Placeholder = "เช่น 200, 1000, 10000",
+    Numeric = true,
+    Finished = true,
+    Callback = function(Value)
+        local num = tonumber(Value)
+        if num then
+            vehicleSpeedValue = math.clamp(num, 1, 100000)
+            Fluent:Notify({ Title = "Bemo Vehicle", Content = "ตั้งค่าความเร็วเป็น: " .. tostring(vehicleSpeedValue), Duration = 2 })
+        end
+    end
+})
+
+local isTouchingGas = false
+local isTouchingReverse = false
+local isTouchingBrake = false
+
+UserInputService.TouchStarted:Connect(function(touch, gameProcessed)
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local screenSize = camera.ViewportSize
+    local posX = touch.Position.X / screenSize.X
+    local posY = touch.Position.Y / screenSize.Y
+    
+    if posX >= 0.86 and posY >= 0.65 then isTouchingGas = true end
+    if posX >= 0.73 and posX < 0.86 and posY >= 0.65 then isTouchingReverse = true end
+    if posX >= 0.75 and posX <= 0.95 and posY >= 0.50 and posY < 0.65 then isTouchingBrake = true end
+end)
+
+UserInputService.TouchEnded:Connect(function(touch)
+    local camera = workspace.CurrentCamera
+    if not camera then return end
+    local posX = touch.Position.X / screenSize.X
+    
+    if posX >= 0.70 then
+        isTouchingGas = false
+        isTouchingReverse = false
+        isTouchingBrake = false
+    end
+end)
+
+RunService.Stepped:Connect(function()
+    if vehicleSpeedEnabled and LocalPlayer.Character then
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.SeatPart then
+            local seat = humanoid.SeatPart
+            local rootPart = seat.Parent:IsA("Model") and (seat.Parent.PrimaryPart or seat) or seat
+            
+            if isTouchingBrake then
+                rootPart.AssemblyLinearVelocity = Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
+                rootPart.AssemblyAngularVelocity = Vector3.zero
+            elseif isTouchingGas then
+                local forwardDir = rootPart.CFrame.LookVector
+                rootPart.AssemblyLinearVelocity = Vector3.new(forwardDir.X * vehicleSpeedValue, rootPart.AssemblyLinearVelocity.Y, forwardDir.Z * vehicleSpeedValue)
+            elseif isTouchingReverse then
+                local backwardDir = -rootPart.CFrame.LookVector
+                rootPart.AssemblyLinearVelocity = Vector3.new(backwardDir.X * vehicleSpeedValue, rootPart.AssemblyLinearVelocity.Y, backwardDir.Z * vehicleSpeedValue)
+            end
+        end
+    end
+end)
+
+---------------------------------------------------------
+-- 10. เมนูวาปไปหาผู้เล่น (Teleport Tab)
+---------------------------------------------------------
+local function getPlayerList()
+    local list = {}
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then table.insert(list, p.Name) end
+    end
+    return list
+end
+
+local targetPlayer = nil
+local PlayerDropdown = Tabs.Teleport:AddDropdown("PlayerSelect", {
+    Title = "เลือกชื่อผู้เล่น",
+    Values = getPlayerList(),
+    Multi = false,
+    Default = nil,
+    Callback = function(Value) targetPlayer = Value end
+})
+
+Tabs.Teleport:AddButton({
+    Title = "วาปไปหาผู้เล่นที่เลือก",
+    Callback = function()
+        if targetPlayer and Players:FindFirstChild(targetPlayer) then
+            local targetChar = Players[targetPlayer].Character
+            local myChar = LocalPlayer.Character
+            if targetChar and targetChar:FindFirstChild("HumanoidRootPart") and myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                myChar.HumanoidRootPart.CFrame = targetChar.HumanoidRootPart.CFrame * CFrame.new(0, 3, 0)
+            end
+        end
+    end
+})
+
+---------------------------------------------------------
+-- ปุ่มเปิด/ปิด เมนูสำหรับ มือถือ/Delta
+---------------------------------------------------------
+local ScreenGui = Instance.new("ScreenGui")
+local ToggleBtn = Instance.new("TextButton")
+local UICorner = Instance.new("UICorner")
+
+ScreenGui.Name = "BemoFixGui"
+ScreenGui.Parent = game:GetService("CoreGui") or LocalPlayer:WaitForChild("PlayerGui")
+
+ToggleBtn.Name = "BemoToggle"
+ToggleBtn.Parent = ScreenGui
+ToggleBtn.BackgroundColor3 = Color3.fromRGB(0, 102, 204)
+ToggleBtn.Position = UDim2.new(0, 15, 0.3, 0)
+ToggleBtn.Size = UDim2.new(0, 80, 0, 40)
+ToggleBtn.Font = Enum.Font.SourceSansBold
+ToggleBtn.Text = "Bemo Menu"
+ToggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleBtn.TextSize = 14
+ToggleBtn.Active = true
+ToggleBtn.Draggable = true
+
+UICorner.CornerRadius = UDim.new(0, 8)
+UICorner.Parent = ToggleBtn
+
+ToggleBtn.MouseButton1Click:Connect(function()
+    Window:Minimize()
+end)
+
+Fluent:Notify({
+    Title = "Bemo Menu",
+    Content = "อัปเดตระบบออกกำลังกายกดปุ่ม Q/E อัตโนมัติแล้ว!",
+    Duration = 5
+})
